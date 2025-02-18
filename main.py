@@ -40,9 +40,9 @@ def exportar_finanzas(year: int = Query(None), month: int = Query(None)):
 
         filters = []
         if year:
-            filters.append(f"EXTRACT(YEAR FROM e.fecha) = {year}")
+            filters.append(f"EXTRACT(YEAR FROM i.fecha) = {year}")
         if month:
-            filters.append(f"EXTRACT(MONTH FROM e.fecha) = {month}")
+            filters.append(f"EXTRACT(MONTH FROM i.fecha) = {month}")
 
         if filters:
             expenses_query += " WHERE " + " AND ".join(filters)
