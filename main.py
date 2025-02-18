@@ -25,8 +25,8 @@ def exportar_finanzas(year: int = Query(None), month: int = Query(None)):
     """Genera un CSV con los gastos, ingresos y análisis financiero."""
     try:
         # Construir la consulta SQL para gastos
-        expenses_query = 'SELECT fecha, valor, description FROM "expenses"'
-        incomes_query = 'SELECT fecha, valor, description FROM "incomes"'
+        expenses_query = 'SELECT fecha, valor, description FROM "Expenses"'
+        incomes_query = 'SELECT fecha, valor, description FROM "Incomes"'
 
         filters = []
         if year:
