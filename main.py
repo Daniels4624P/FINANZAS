@@ -24,21 +24,18 @@ engine = sqlalchemy.create_engine(DATABASE_URL)
 def exportar_finanzas(year: int = Query(None), month: int = Query(None)):
     """Genera un CSV con los gastos, ingresos y análisis financiero."""
     try:
-        result = conn.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'")
-        tables = [row[0] for row in result]
-        print(tables)
         # Construir la consulta SQL para gastos
         expenses_query = """
             SELECT e.fecha, e.valor, e.description, c.name AS categoria, a.name AS cuenta
-            FROM Expenses e
-            LEFT JOIN Categories c ON e.category_id = c.id
-            LEFT JOIN Accounts a ON e.account_id = a.id
+            FROM "Expenses" e
+            LEFT JOIN "Categories" c ON e.category_id = c.id
+            LEFT JOIN "Accounts" a ON e.account_id = a.id
         """
         incomes_query = """
             SELECT i.fecha, i.valor, i.description, c.name AS categoria, a.name AS cuenta
-            FROM Incomes i
-            LEFT JOIN Categories c ON i.category_id = c.id
-            LEFT JOIN Accounts a ON i.account_id = a.id
+            FROM "Incomes" i
+            LEFT JOIN "Categories" c ON i.category_id = c.id
+            LEFT JOIN "Accounts" a ON i.account_id = a.id
         """
 
         filters = []
