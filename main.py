@@ -22,12 +22,11 @@ engine = sqlalchemy.create_engine(DATABASE_URL)
 
 @app.get("/export/finances")
 def exportar_finanzas(year: int = Query(None), month: int = Query(None)):
-    with engine.connect() as conn:
+    """Genera un CSV con los gastos, ingresos y análisis financiero."""
+    try:
         result = conn.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'")
         tables = [row[0] for row in result]
         print(tables)
-    """Genera un CSV con los gastos, ingresos y análisis financiero."""
-    try:
         # Construir la consulta SQL para gastos
         expenses_query = """
             SELECT e.fecha, e.valor, e.description, c.name AS categoria, a.name AS cuenta
