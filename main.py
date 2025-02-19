@@ -56,7 +56,7 @@ def export_public_transactions(year: int = Query(...), month: int = Query(...)):
         balance = total_incomes - total_expenses
         porcentaje_gastado = (total_expenses / total_incomes * 100) if total_incomes > 0 else 0
 
-        gastos_fijos = expenses_df[expenses_df["categoria"].isin(["Renta", "Servicios", "Educación"])]
+        gastos_fijos = expenses_df[expenses_df["categoria"].isin(["Administracion(Gasto Fijo)", "Servicios(Gastos Fijos)", "Educación(Gastos Fijos)"])]
         total_gastos_fijos = gastos_fijos["valor"].sum() if not gastos_fijos.empty else 0
         gastos_variables = total_expenses - total_gastos_fijos
         porcentaje_gastos_variables = (gastos_variables / total_expenses * 100) if total_expenses > 0 else 0
