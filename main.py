@@ -103,9 +103,9 @@ def export_private_transactions(year: int = Query(...), month: int = Query(...),
         SELECT a.name AS cuenta, COALESCE(SUM(i.valor), 0) AS total_ingresos,
                COALESCE(SUM(e.valor), 0) AS total_gastos, 
                COALESCE(SUM(i.valor), 0) - COALESCE(SUM(e.valor), 0) AS balance
-        FROM Accounts a
-        LEFT JOIN Expenses e ON a.id = e.cuenta_id
-        LEFT JOIN Incomes i ON a.id = i.cuenta_id
+        FROM "Accounts" a
+        LEFT JOIN "Expenses" e ON a.id = e.cuenta_id
+        LEFT JOIN "Incomes" i ON a.id = i.cuenta_id
         WHERE a.user_id = {user_id} AND a.public = FALSE
         AND EXTRACT(YEAR FROM e.fecha) = {year} AND EXTRACT(MONTH FROM e.fecha) = {month}
         GROUP BY a.name
