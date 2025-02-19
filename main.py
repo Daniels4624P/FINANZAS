@@ -97,10 +97,12 @@ def export_public_transactions(year: int = Query(...), month: int = Query(...)):
 
 @app.get("/export/private-transactions")
 def export_private_transactions(year: int = Query(...), month: int = Query(...), user_id: int = Query(...)):
-    """Genera un CSV con el análisis financiero de cuentas privadas del usuario autenticado"""
+    """Genera un CSV con un análisis financiero detallado de cuentas privadas del usuario autenticado"""
     try:
+        # 📌 Obtener ingresos y gastos del mes actual
         query = f"""
-        SELECT a.name AS cuenta, COALESCE(SUM(i.valor), 0) AS total_ingresos,
+        SELECT a.name AS cuenta, 
+               COALESCE(SUM(i.valor), 0) AS total_ingresos,
                COALESCE(SUM(e.valor), 0) AS total_gastos, 
                COALESCE(SUM(i.valor), 0) - COALESCE(SUM(e.valor), 0) AS balance
         FROM "Accounts" a
@@ -116,11 +118,83 @@ def export_private_transactions(year: int = Query(...), month: int = Query(...),
         if df.empty:
             raise HTTPException(status_code=404, detail="No hay transacciones privadas registradas")
 
+        # 📌 Obtener ingresos y gastos del mes anterior para comparación
+        prev_month_query = f"""
+        SELECT COALESCE(SUM(i.valor), 0) AS total_ingresos_anterior,
+               COALESCE(SUM(e.valor), 0) AS total_gastos_anterior
+        FROM "Accounts" a
+        LEFT JOIN "Expenses" e ON a.id = e.cuenta_id
+        LEFT JOIN "Incomes" i ON a.id = i.cuenta_id
+        WHERE a.user_id = {user_id} AND a.public = FALSE
+        AND EXTRACT(YEAR FROM e.fecha) = {year} 
+        AND EXTRACT(MONTH FROM e.fecha) = {month} - 1
+        """
+
+        df_prev = pd.read_sql(prev_month_query, con=engine)
+
+        total_ingresos = df["total_ingresos"].sum()
+        total_gastos = df["total_gastos"].sum()
+        balance = total_ingresos - total_gastos
+
+        total_ingresos_anterior = df_prev["total_ingresos_anterior"].sum() if not df_prev.empty else 0
+        total_gastos_anterior = df_prev["total_gastos_anterior"].sum() if not df_prev.empty else 0
+
+        # 📌 Calcular variaciones con respecto al mes anterior
+        cambio_ingresos = ((total_ingresos - total_ingresos_anterior) / total_ingresos_anterior * 100) if total_ingresos_anterior > 0 else 0
+        cambio_gastos = ((total_gastos - total_gastos_anterior) / total_gastos_anterior * 100) if total_gastos_anterior > 0 else 0
+
+        # 📌 Obtener gastos por categoría
+        category_query = f"""
+        SELECT c.name AS categoria, COALESCE(SUM(e.valor), 0) AS total_gasto_categoria
+        FROM "Expenses" e
+        LEFT JOIN "Categories" c ON e.categoria_id = c.id
+        LEFT JOIN "Accounts" a ON e.cuenta_id = a.id
+        WHERE a.user_id = {user_id} AND a.public = FALSE
+        AND EXTRACT(YEAR FROM e.fecha) = {year} AND EXTRACT(MONTH FROM e.fecha) = {month}
+        GROUP BY c.name
+        """
+
+        df_category = pd.read_sql(category_query, con=engine)
+
+        # 📌 Análisis de gastos fijos y variables
+        gastos_fijos = df_category[df_category["categoria"].isin(["Renta", "Servicios", "Educación"])]["total_gasto_categoria"].sum()
+        gastos_variables = total_gastos - gastos_fijos
+        porcentaje_gastos_fijos = (gastos_fijos / total_gastos * 100) if total_gastos > 0 else 0
+        porcentaje_gastos_variables = (gastos_variables / total_gastos * 100) if total_gastos > 0 else 0
+
+        # 📌 Proyección de saldo a futuro
+        proyeccion_3_meses = balance * 3
+        proyeccion_6_meses = balance * 6
+
+        # 📌 Crear DataFrame con el análisis financiero
+        analysis_data = {
+            "Métrica": ["Total Ingresos", "Total Gastos", "Balance", 
+                        "Cambio de Ingresos (%)", "Cambio de Gastos (%)",
+                        "Gastos Fijos", "Gastos Variables", 
+                        "% Gastos Fijos", "% Gastos Variables", 
+                        "Proyección a 3 meses", "Proyección a 6 meses"],
+            "Valor": [f"${total_ingresos:,.2f}", f"${total_gastos:,.2f}", f"${balance:,.2f}", 
+                      f"{cambio_ingresos:.2f}%", f"{cambio_gastos:.2f}%", 
+                      f"${gastos_fijos:,.2f}", f"${gastos_variables:,.2f}", 
+                      f"{porcentaje_gastos_fijos:.2f}%", f"{porcentaje_gastos_variables:.2f}%", 
+                      f"${proyeccion_3_meses:,.2f}", f"${proyeccion_6_meses:,.2f}"]
+        }
+        analysis_df = pd.DataFrame(analysis_data)
+
+        # 📌 Crear CSV con el análisis financiero
         output = io.StringIO()
+        output.write("###############################################\n")
+        output.write("### 📊 ANÁLISIS DETALLADO DE FINANZAS PRIVADAS 📊 ###\n")
+        output.write("###############################################\n\n")
+        output.write("### 📈 Resumen Financiero ###\n")
+        analysis_df.to_csv(output, index=False, encoding="utf-8")
+        output.write("\n### 📊 Gastos por Categoría ###\n")
+        df_category.to_csv(output, index=False, encoding="utf-8")
+        output.write("\n### 💸 Detalle de Cuentas Privadas ###\n")
         df.to_csv(output, index=False, encoding="utf-8")
         output.seek(0)
 
-        return StreamingResponse(output, media_type="text/csv", headers={"Content-Disposition": "attachment; filename=private_transactions.csv"})
-    
+        return StreamingResponse(output, media_type="text/csv", headers={"Content-Disposition": "attachment; filename=private_finances.csv"})
+
     except Exception as e:
         return {"error": str(e)}
