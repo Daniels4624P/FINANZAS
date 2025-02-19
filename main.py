@@ -24,30 +24,24 @@ engine = sqlalchemy.create_engine(DATABASE_URL)
 def exportar_finanzas(year: int = Query(None), month: int = Query(None)):
     """Genera un CSV con los gastos, ingresos y análisis financiero."""
     try:
-        # Construir la consulta SQL para gastos
-        expenses_query = """
+         # 🔹 Consulta SQL para GASTOS (Expenses)
+        expenses_query = f"""
             SELECT e.fecha, e.valor, e.description, c.name AS categoria, a.name AS cuenta
             FROM "Expenses" e
             LEFT JOIN "Categories" c ON e.categoria_id = c.id
             LEFT JOIN "Accounts" a ON e.cuenta_id = a.id
+            WHERE EXTRACT(YEAR FROM e.fecha) = {year} AND EXTRACT(MONTH FROM e.fecha) = {month}
         """
-        incomes_query = """
+
+        # 🔹 Consulta SQL para INGRESOS (Incomes)
+        incomes_query = f"""
             SELECT i.fecha, i.valor, i.description, c.name AS categoria, a.name AS cuenta
             FROM "Incomes" i
             LEFT JOIN "Categories" c ON i.categoria_id = c.id
             LEFT JOIN "Accounts" a ON i.cuenta_id = a.id
+            WHERE EXTRACT(YEAR FROM i.fecha) = {year} AND EXTRACT(MONTH FROM i.fecha) = {month}
         """
-
-        filters = []
-        if year:
-            filters.append(f"EXTRACT(YEAR FROM i.fecha) = {year}")
-        if month:
-            filters.append(f"EXTRACT(MONTH FROM i.fecha) = {month}")
-
-        if filters:
-            expenses_query += " WHERE " + " AND ".join(filters)
-            incomes_query += " WHERE " + " AND ".join(filters)
-
+        
         # Cargar datos de la base de datos
         expenses_df = pd.read_sql(expenses_query, con=engine)
         incomes_df = pd.read_sql(incomes_query, con=engine)
