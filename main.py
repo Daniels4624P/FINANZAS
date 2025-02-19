@@ -7,10 +7,10 @@ import io
 
 app = FastAPI()
 
-# Configuración de CORS para permitir peticiones desde Express
+# Configuración de CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://api-familia-tareas-node.onrender.com"],  # Cambia esto a la URL de tu API de Express en producción
+    allow_origins=["https://api-familia-tareas-node.onrender.com"],  
     allow_credentials=True,
     allow_methods=["GET"],
     allow_headers=["*"],
@@ -22,9 +22,9 @@ engine = sqlalchemy.create_engine(DATABASE_URL)
 
 @app.get("/export/finances")
 def exportar_finanzas(year: int = Query(None), month: int = Query(None)):
-    """Genera un CSV con los gastos, ingresos y análisis financiero."""
+    """Genera un CSV con los gastos, ingresos y análisis financiero en un formato ordenado."""
     try:
-         # 🔹 Consulta SQL para GASTOS (Expenses)
+        # Consultas SQL
         expenses_query = f"""
             SELECT e.fecha, e.valor, e.description, c.name AS categoria, a.name AS cuenta
             FROM "Expenses" e
@@ -33,7 +33,6 @@ def exportar_finanzas(year: int = Query(None), month: int = Query(None)):
             WHERE EXTRACT(YEAR FROM e.fecha) = {year} AND EXTRACT(MONTH FROM e.fecha) = {month}
         """
 
-        # 🔹 Consulta SQL para INGRESOS (Incomes)
         incomes_query = f"""
             SELECT i.fecha, i.valor, i.description, c.name AS categoria, a.name AS cuenta
             FROM "Incomes" i
@@ -41,8 +40,8 @@ def exportar_finanzas(year: int = Query(None), month: int = Query(None)):
             LEFT JOIN "Accounts" a ON i.cuenta_id = a.id
             WHERE EXTRACT(YEAR FROM i.fecha) = {year} AND EXTRACT(MONTH FROM i.fecha) = {month}
         """
-        
-        # Cargar datos de la base de datos
+
+        # Cargar datos
         expenses_df = pd.read_sql(expenses_query, con=engine)
         incomes_df = pd.read_sql(incomes_query, con=engine)
 
@@ -50,30 +49,49 @@ def exportar_finanzas(year: int = Query(None), month: int = Query(None)):
         total_expenses = expenses_df["valor"].sum() if not expenses_df.empty else 0
         total_incomes = incomes_df["valor"].sum() if not incomes_df.empty else 0
         balance = total_incomes - total_expenses
-        gasto_promedio_mensual = total_expenses / month if month and month > 0 else total_expenses / 12
         porcentaje_gastado = (total_expenses / total_incomes * 100) if total_incomes > 0 else 0
+        gastos_fijos = expenses_df[expenses_df["categoria"].isin(["Renta", "Servicios", "Educación"])]
+        total_gastos_fijos = gastos_fijos["valor"].sum() if not gastos_fijos.empty else 0
+        gastos_variables = total_expenses - total_gastos_fijos
+        porcentaje_gastos_variables = (gastos_variables / total_expenses * 100) if total_expenses > 0 else 0
+        proyeccion_3_meses = balance * 3
+        proyeccion_6_meses = balance * 6
 
-        # Crear DataFrame de análisis financiero
+        # Análisis Financiero
         analysis_data = {
-            "Métrica": ["Total Ingresos", "Total Gastos", "Balance", "Gasto Promedio Mensual", "Porcentaje de Ingresos Gastados"],
-            "Valor": [total_incomes, total_expenses, balance, gasto_promedio_mensual, f"{porcentaje_gastado:.2f}%"]
+            "Métrica": ["Total Ingresos", "Total Gastos", "Balance", "Porcentaje de Ingresos Gastados", "Gastos Fijos", "Gastos Variables", "% Gastos Variables", "Proyección a 3 meses", "Proyección a 6 meses"],
+            "Valor": [f"${total_incomes:,.2f}", f"${total_expenses:,.2f}", f"${balance:,.2f}", f"{porcentaje_gastado:.2f}%", f"${total_gastos_fijos:,.2f}", f"${gastos_variables:,.2f}", f"{porcentaje_gastos_variables:.2f}%", f"${proyeccion_3_meses:,.2f}", f"${proyeccion_6_meses:,.2f}"]
         }
         analysis_df = pd.DataFrame(analysis_data)
 
-        # Combinar todo en un solo archivo CSV
+        # Porcentaje de Gasto por Categoría
+        category_spending = expenses_df.groupby("categoria")["valor"].sum().reset_index()
+        category_spending["% del Gasto"] = (category_spending["valor"] / total_expenses * 100).round(2).astype(str) + "%"
+        
+        # Formato monetario
+        expenses_df["valor"] = expenses_df["valor"].apply(lambda x: f"${x:,.2f}")
+        incomes_df["valor"] = incomes_df["valor"].apply(lambda x: f"${x:,.2f}")
+        category_spending["valor"] = category_spending["valor"].apply(lambda x: f"${x:,.2f}")
+        
+        # Crear CSV
         output = io.StringIO()
-        output.write("### Análisis Financiero\n")
+        output.write("###############################################\n")
+        output.write("### 🏦 ANÁLISIS FINANCIERO FAMILIAR 📊 ###\n")
+        output.write("###############################################\n\n")
+        output.write("### 📈 Análisis Financiero ###\n")
         analysis_df.to_csv(output, index=False, encoding="utf-8")
-        output.write("\n### Ingresos\n")
+        output.write("\n### 📊 Porcentaje de Gasto por Categoría ###\n")
+        category_spending.to_csv(output, index=False, encoding="utf-8")
+        output.write("\n### 💰 Ingresos ###\n")
         incomes_df.to_csv(output, index=False, encoding="utf-8")
-        output.write("\n### Gastos\n")
+        output.write("\n### 💸 Gastos ###\n")
         expenses_df.to_csv(output, index=False, encoding="utf-8")
         output.seek(0)
 
         return StreamingResponse(
             output,
             media_type="text/csv",
-            headers={"Content-Disposition": "attachment; filename=finanzas.csv"}
+            headers={"Content-Disposition": "attachment; filename=finanzas_familia.csv"}
         )
     
     except Exception as e:
