@@ -4,6 +4,9 @@ from fastapi.responses import StreamingResponse
 import pandas as pd
 import sqlalchemy
 import io
+import openpyxl
+from openpyxl import Workbook
+from openpyxl.chart import BarChart, Reference, PieChart
 
 app = FastAPI()
 
@@ -22,7 +25,7 @@ engine = sqlalchemy.create_engine(DATABASE_URL)
 
 @app.get("/export/finances")
 def exportar_finanzas(year: int = Query(None), month: int = Query(None)):
-    """Genera un CSV con los gastos, ingresos y análisis financiero en un formato ordenado."""
+    """Genera un archivo Excel con los gastos, ingresos y análisis financiero con gráficos."""
     try:
         # Consultas SQL
         expenses_query = f"""
@@ -52,49 +55,52 @@ def exportar_finanzas(year: int = Query(None), month: int = Query(None)):
         total_incomes = incomes_df["valor"].sum() if not incomes_df.empty else 0
         balance = total_incomes - total_expenses
         porcentaje_gastado = (total_expenses / total_incomes * 100) if total_incomes > 0 else 0
-        gastos_fijos = expenses_df[expenses_df["categoria"].isin(["Renta", "Servicios", "Educación"])]
-        total_gastos_fijos = gastos_fijos["valor"].sum() if not gastos_fijos.empty else 0
-        gastos_variables = total_expenses - total_gastos_fijos
-        porcentaje_gastos_variables = (gastos_variables / total_expenses * 100) if total_expenses > 0 else 0
-        proyeccion_3_meses = balance * 3
-        proyeccion_6_meses = balance * 6
 
-        # Análisis Financiero
-        analysis_data = {
-            "Métrica": ["Total Ingresos", "Total Gastos", "Balance", "Porcentaje de Ingresos Gastados", "Gastos Fijos", "Gastos Variables", "% Gastos Variables", "Proyección a 3 meses", "Proyección a 6 meses"],
-            "Valor": [f"${total_incomes:,.2f}", f"${total_expenses:,.2f}", f"${balance:,.2f}", f"{porcentaje_gastado:.2f}%", f"${total_gastos_fijos:,.2f}", f"${gastos_variables:,.2f}", f"{porcentaje_gastos_variables:.2f}%", f"${proyeccion_3_meses:,.2f}", f"${proyeccion_6_meses:,.2f}"]
-        }
-        analysis_df = pd.DataFrame(analysis_data)
-
-        # Porcentaje de Gasto por Categoría
         category_spending = expenses_df.groupby("categoria")["valor"].sum().reset_index()
-        category_spending["% del Gasto"] = (category_spending["valor"] / total_expenses * 100).round(2).astype(str) + "%"
-        
-        # Formato monetario
-        expenses_df["valor"] = expenses_df["valor"].apply(lambda x: f"${x:,.2f}")
-        incomes_df["valor"] = incomes_df["valor"].apply(lambda x: f"${x:,.2f}")
-        category_spending["valor"] = category_spending["valor"].apply(lambda x: f"${x:,.2f}")
-        
-        # Crear CSV
-        output = io.StringIO()
-        output.write("###############################################\n")
-        output.write("### 🏦 ANÁLISIS FINANCIERO FAMILIAR 📊 ###\n")
-        output.write("###############################################\n\n")
-        output.write("### 📈 Análisis Financiero ###\n")
-        analysis_df.to_csv(output, index=False, encoding="utf-8")
-        output.write("\n### 📊 Porcentaje de Gasto por Categoría ###\n")
-        category_spending.to_csv(output, index=False, encoding="utf-8")
-        output.write("\n### 💰 Ingresos ###\n")
-        incomes_df.to_csv(output, index=False, encoding="utf-8")
-        output.write("\n### 💸 Gastos ###\n")
-        expenses_df.to_csv(output, index=False, encoding="utf-8")
+        category_spending["% del Gasto"] = (category_spending["valor"] / total_expenses * 100).round(2)
+
+        # Crear archivo Excel
+        output = io.BytesIO()
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Análisis Financiero"
+
+        # Escribir datos en Excel
+        ws.append(["Métrica", "Valor"])
+        ws.append(["Total Ingresos", total_incomes])
+        ws.append(["Total Gastos", total_expenses])
+        ws.append(["Balance", balance])
+        ws.append(["Porcentaje de Ingresos Gastados", f"{porcentaje_gastado:.2f}%"])
+
+        # Agregar gráficos
+        chart = BarChart()
+        data = Reference(ws, min_col=2, min_row=2, max_row=5)
+        categories = Reference(ws, min_col=1, min_row=2, max_row=5)
+        chart.add_data(data, titles_from_data=False)
+        chart.set_categories(categories)
+        chart.title = "Análisis Financiero"
+        ws.add_chart(chart, "E5")
+
+        ws2 = wb.create_sheet("Gastos por Categoría")
+        ws2.append(["Categoría", "Valor", "% del Gasto"])
+        for row in category_spending.itertuples():
+            ws2.append([row.categoria, row.valor, f"{row._3}%"])
+
+        pie_chart = PieChart()
+        labels = Reference(ws2, min_col=1, min_row=2, max_row=len(category_spending) + 1)
+        data = Reference(ws2, min_col=2, min_row=2, max_row=len(category_spending) + 1)
+        pie_chart.add_data(data, titles_from_data=False)
+        pie_chart.set_categories(labels)
+        pie_chart.title = "Distribución de Gastos"
+        ws2.add_chart(pie_chart, "E5")
+
+        wb.save(output)
         output.seek(0)
 
         return StreamingResponse(
             output,
-            media_type="text/csv",
-            headers={"Content-Disposition": "attachment; filename=finanzas_familia.csv"}
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": "attachment; filename=finanzas_familia.xlsx"}
         )
-    
     except Exception as e:
         return {"error": str(e)}
