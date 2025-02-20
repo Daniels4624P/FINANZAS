@@ -38,12 +38,13 @@ def export_public_transactions(year: int = Query(...), month: int = Query(...)):
 
         incomes_query = f"""
             SELECT i.fecha, i.valor, i.description, c.name AS categoria, 
-                   a.name AS cuenta, u.name AS usuario
+                   a1.name AS cuenta_origen, a2.name AS cuenta_destino, u.name AS usuario
             FROM "Incomes" i
             LEFT JOIN "Categories" c ON i.categoria_id = c.id
-            LEFT JOIN "Accounts" a ON i.cuenta_id = a.id
+            LEFT JOIN "Accounts" a1 ON i.cuenta_id = a1.id
+            LEFT JOIN "Accounts" a2 ON i.destino_id = a2.id
             LEFT JOIN "Users" u ON i.user_id = u.id
-            WHERE a.public = TRUE
+            WHERE a1.public = TRUE
             AND EXTRACT(YEAR FROM i.fecha) = {year} AND EXTRACT(MONTH FROM i.fecha) = {month}
         """
 
